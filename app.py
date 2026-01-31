@@ -59,8 +59,8 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- 2. API KEYS ---
-API_KEY = "JOUW_ALPACA_KEY"
-SECRET_KEY = "JOUW_ALPACA_SECRET"
+API_KEY = "PK5GBMQVMM4XSH2Y4OMA7X3NYZ"
+SECRET_KEY = "DfkqRpMWaBVsJQydvhpBXA5bRAvG3tG9yPn1eMoEpEWt"
 
 # --- 3. SIDEBAR: INPUT ---
 st.sidebar.markdown("### 🛠 CONTROL PANEL")
@@ -121,5 +121,6 @@ else:
 
 st.markdown("---")
 st.caption(f"SYSTEM STATUS: ACTIVE | SYNC TIME: {datetime.now().strftime('%H:%M:%S')} EST")
+
 
 
