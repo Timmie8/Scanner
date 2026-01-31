@@ -6,33 +6,51 @@ from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from datetime import datetime, timedelta
 
-# --- 1. PAGINA CONFIGURATIE ---
-st.set_page_config(page_title="SST Neural Scanner", layout="wide")
+# --- 1. PAGE SETUP ---
+st.set_page_config(page_title="SST Interactive Scanner", layout="wide")
 
+# Custom CSS for Professional Dark Theme
 st.markdown("""
     <style>
-    .main { background-color: #020617; }
-    .stMetric { background-color: #1e293b; padding: 15px; border-radius: 10px; border: 1px solid #334155; }
+    .stApp { background-color: #020617; color: white; }
+    .stMultiSelect div { background-color: #1e293b !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KEYS (Vul deze in) ---
-API_KEY = "PK5GBMQVMM4XSH2Y4OMA7X3NYZ"
-SECRET_KEY = "DfkqRpMWaBVsJQydvhpBXA5bRAvG3tG9yPn1eMoEpEWt"
-WATCHLIST = ["ANET", "ERAS", "CRML", "LGN", "CLS", "CSCO", "NVDA", "AMZN"]
+# --- 2. API KEYS ---
+API_KEY = "JOUW_ALPACA_KEY"
+SECRET_KEY = "JOUW_ALPACA_SECRET"
 
-st.title("🚀 SST NEURAL | AI Market Intelligence")
-st.caption("Real-time LSTM Momentum & Ensemble Analysis for Swing Traders")
+# --- 3. STOCK SELECTION ---
+# Een brede lijst waaruit de gebruiker kan kiezen
+ALL_AVAILABLE_STOCKS = sorted([
+    "ANET", "ERAS", "CRML", "LGN", "CLS", "CSCO", "NVDA", "AMZN", "AAPL", 
+    "TSLA", "MSFT", "META", "GOOGL", "AMD", "NFLX", "PLTR", "SNOW", "PLTR"
+])
 
-# --- 3. DE ENGINE ---
-@st.cache_data(ttl=600) # Cached de data voor 10 minuten om de API niet te overbelasten
-def fetch_scanner_data():
+st.sidebar.title("SST Control Panel")
+selected_tickers = st.sidebar.multiselect(
+    "Select Stocks to Scan:",
+    options=ALL_AVAILABLE_STOCKS,
+    default=["ANET", "ERAS", "NVDA"] # Standaard selectie
+)
+
+# --- 4. THE ENGINE ---
+@st.cache_data(ttl=300) # Cache voor 5 minuten
+def get_ai_analysis(tickers):
+    if not tickers:
+        return pd.DataFrame()
+        
     client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
     results = []
     
-    for symbol in WATCHLIST:
+    for symbol in tickers:
         try:
-            req = StockBarsRequest(symbol_or_symbols=symbol, timeframe=TimeFrame.Day, start=datetime.now() - timedelta(days=45))
+            req = StockBarsRequest(
+                symbol_or_symbols=symbol, 
+                timeframe=TimeFrame.Day, 
+                start=datetime.now() - timedelta(days=45)
+            )
             bars = client.get_stock_bars(req).df.xs(symbol)
             
             # LSTM & Ensemble Logic
@@ -51,30 +69,41 @@ def fetch_scanner_data():
                 "Ticker": symbol,
                 "Price": round(bars['close'].iloc[-1], 2),
                 "Ensemble Score": round(ensemble, 1),
-                "LSTM Force": f"{round(lstm_force, 1)}%",
+                "LSTM Force": round(lstm_force, 1),
                 "Rating": "STRONG BUY" if ensemble > 75 else "ACCUMULATE" if ensemble > 60 else "NEUTRAL",
-                "Stop Loss": round(bars['close'].iloc[-1] - (atr * 1.5), 2)
+                "Volatility Stop": round(bars['close'].iloc[-1] - (atr * 1.5), 2)
             })
-        except:
+        except Exception:
             continue
     return pd.DataFrame(results)
 
-# --- 4. DISPLAY ---
-try:
-    df = fetch_scanner_data()
+# --- 5. DASHBOARD UI ---
+st.title("🚀 SST NEURAL | AI Terminal")
+st.write("Selected Tickers:", ", ".join(selected_tickers) if selected_tickers else "None")
 
-    # Kleurcodering voor de Rating
-    def color_rating(val):
-        color = '#10b981' if val == 'STRONG BUY' else '#3b82f6' if val == 'ACCUMULATE' else '#94a3b8'
-        return f'color: {color}; font-weight: bold'
+if selected_tickers:
+    with st.spinner("Analyzing Market Data..."):
+        df = get_ai_analysis(selected_tickers)
+        
+        if not df.empty:
+            # Kleurcodering functie
+            def style_rating(val):
+                color = '#10b981' if val == 'STRONG BUY' else '#3b82f6' if val == 'ACCUMULATE' else '#94a3b8'
+                return f'color: {color}; font-weight: bold'
 
-    # Toon de tabel
-    st.table(df.style.applymap(color_rating, subset=['Rating']))
-    
-    st.info(f"Last sync: {datetime.now().strftime('%H:%M:%S')} EST")
+            # Tabel weergeven
+            st.dataframe(
+                df.style.applymap(style_rating, subset=['Rating']),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.warning("No data found for selected stocks.")
+else:
+    st.info("Please select stocks in the sidebar to begin scanning.")
 
-except Exception as e:
-    st.error(f"Engine Connection Error: {e}")
+st.divider()
+st.caption(f"Last Intelligence Sync: {datetime.now().strftime('%H:%M:%S')} EST")
 
 
 
