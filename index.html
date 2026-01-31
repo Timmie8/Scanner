@@ -1,0 +1,60 @@
+<div id="sst-ai-scanner" class="sst-container" style="background: #0f172a; color: white; padding: 20px; border-radius: 15px; font-family: sans-serif;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">
+        <h2 style="margin: 0; color: #60a5fa; font-style: italic;">AI NEURAL SCANNER</h2>
+        <span id="update-time" style="font-size: 10px; color: #94a3b8;">SYNCING...</span>
+    </div>
+
+    <div id="mobile-notice" style="display: none; color: #94a3b8; font-size: 12px; margin-bottom: 10px;">* Swipe right to see full metrics</div>
+    
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 600px;">
+            <thead>
+                <tr style="color: #64748b; font-size: 12px; text-transform: uppercase;">
+                    <th style="padding: 12px;">Ticker</th>
+                    <th>Price</th>
+                    <th>Ensemble</th>
+                    <th>LSTM Force</th>
+                    <th>Rating</th>
+                    <th>Risk Stop</th>
+                </tr>
+            </thead>
+            <tbody id="scanner-body">
+                </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    async function loadScannerData() {
+        try {
+            // Change 'data.json' to the full URL if necessary
+            const response = await fetch('data.json');
+            const data = await response.json();
+            const body = document.getElementById('scanner-body');
+            const timeSpan = document.getElementById('update-time');
+            
+            body.innerHTML = '';
+            
+            data.forEach(stock => {
+                let color = stock.ensemble > 75 ? '#10b981' : (stock.ensemble > 60 ? '#3b82f6' : '#94a3b8');
+                
+                let row = `<tr style="border-bottom: 1px solid #1e293b; font-size: 14px;">
+                    <td style="padding: 15px; font-weight: bold; font-size: 16px;">${stock.ticker}</td>
+                    <td>$${stock.price}</td>
+                    <td style="color: #60a5fa; font-family: monospace;">${stock.ensemble}</td>
+                    <td style="color: #94a3b8;">${stock.lstm}%</td>
+                    <td style="font-weight: bold; color: ${color}">${stock.sentiment}</td>
+                    <td style="color: #fb7185; font-size: 13px;">$${stock.stop}</td>
+                </tr>`;
+                body.innerHTML += row;
+                timeSpan.innerText = "LAST UPDATE: " + stock.last_update + " EST";
+            });
+        } catch (error) {
+            console.log("Waiting for market data feed...");
+        }
+    }
+
+    // Initialize and Refresh every minute
+    loadScannerData();
+    setInterval(loadScannerData, 60000);
+</script>
