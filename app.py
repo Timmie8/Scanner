@@ -1,28 +1,41 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
-import json
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from datetime import datetime, timedelta
 
-# --- CONFIG ---
+# --- 1. PAGINA CONFIGURATIE ---
+st.set_page_config(page_title="SST Neural Scanner", layout="wide")
+
+st.markdown("""
+    <style>
+    .main { background-color: #020617; }
+    .stMetric { background-color: #1e293b; padding: 15px; border-radius: 10px; border: 1px solid #334155; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. KEYS (Vul deze in) ---
 API_KEY = "PK5GBMQVMM4XSH2Y4OMA7X3NYZ"
 SECRET_KEY = "DfkqRpMWaBVsJQydvhpBXA5bRAvG3tG9yPn1eMoEpEWt"
-WATCHLIST = ["ANET", "ERAS", "CRML", "LGN", "CLS", "CSCO"]
+WATCHLIST = ["ANET", "ERAS", "CRML", "LGN", "CLS", "CSCO", "NVDA", "AMZN"]
 
-client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
+st.title("🚀 SST NEURAL | AI Market Intelligence")
+st.caption("Real-time LSTM Momentum & Ensemble Analysis for Swing Traders")
 
-def generate_and_inject():
+# --- 3. DE ENGINE ---
+@st.cache_data(ttl=600) # Cached de data voor 10 minuten om de API niet te overbelasten
+def fetch_scanner_data():
+    client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
     results = []
-    print("Analyzing market...")
     
     for symbol in WATCHLIST:
         try:
             req = StockBarsRequest(symbol_or_symbols=symbol, timeframe=TimeFrame.Day, start=datetime.now() - timedelta(days=45))
             bars = client.get_stock_bars(req).df.xs(symbol)
             
-            # LSTM & Ensemble Logic (same as before)
+            # LSTM & Ensemble Logic
             bars['log_ret'] = np.log(bars['close'] / bars['close'].shift(1))
             lstm_force = np.clip((bars['log_ret'].iloc[-5:].sum() * 100 + 2) * 20, 0, 100)
             
@@ -35,30 +48,33 @@ def generate_and_inject():
             atr = (bars['high'] - bars['low']).rolling(14).mean().iloc[-1]
             
             results.append({
-                "ticker": symbol, "price": round(bars['close'].iloc[-1], 2),
-                "ensemble": round(ensemble, 1), "lstm": round(lstm_force, 1),
-                "sentiment": "STRONG BUY" if ensemble > 75 else "ACCUMULATE",
-                "stop": round(bars['close'].iloc[-1] - (atr * 1.5), 2)
+                "Ticker": symbol,
+                "Price": round(bars['close'].iloc[-1], 2),
+                "Ensemble Score": round(ensemble, 1),
+                "LSTM Force": f"{round(lstm_force, 1)}%",
+                "Rating": "STRONG BUY" if ensemble > 75 else "ACCUMULATE" if ensemble > 60 else "NEUTRAL",
+                "Stop Loss": round(bars['close'].iloc[-1] - (atr * 1.5), 2)
             })
-        except: continue
+        except:
+            continue
+    return pd.DataFrame(results)
 
-    # --- INJECTIE STAP ---
-    json_data = json.dumps(results, indent=4)
-    
-    # Open je HTML bestand
-    with open("scanner-ai.html", "r", encoding="utf-8") as f:
-        html_content = f.read()
+# --- 4. DISPLAY ---
+try:
+    df = fetch_scanner_data()
 
-    # Zoek de plek tussen /*AUTO_GENERATED_DATA*/ en vervang deze
-    import re
-    new_html = re.sub(r'/\*AUTO_GENERATED_DATA\*/.*', f'/*AUTO_GENERATED_DATA*/\n    const rawData = {json_data};', html_content, flags=re.DOTALL)
-    
-    # Sla de geüpdatete HTML weer op
-    with open("scanner-ai.html", "w", encoding="utf-8") as f:
-        f.write(new_html)
-    
-    print("HTML updated successfully with fresh data!")
+    # Kleurcodering voor de Rating
+    def color_rating(val):
+        color = '#10b981' if val == 'STRONG BUY' else '#3b82f6' if val == 'ACCUMULATE' else '#94a3b8'
+        return f'color: {color}; font-weight: bold'
 
-generate_and_inject()
+    # Toon de tabel
+    st.table(df.style.applymap(color_rating, subset=['Rating']))
+    
+    st.info(f"Last sync: {datetime.now().strftime('%H:%M:%S')} EST")
+
+except Exception as e:
+    st.error(f"Engine Connection Error: {e}")
+
 
 
