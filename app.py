@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 warnings.filterwarnings('ignore')
 
 # 1. SETUP
-API_KEY = "YOUR_ALPACA_KEY"
-SECRET_KEY = "YOUR_ALPACA_SECRET"
+API_KEY = "PK5GBMQVMM4XSH2Y4OMA7X3NYZ"
+SECRET_KEY = "DfkqRpMWaBVsJQydvhpBXA5bRAvG3tG9yPn1eMoEpEWt"
 WATCHLIST = ["ANET", "ERAS", "CRML", "LGN", "CLS", "CSCO", "AMZN", "NVDA", "STEP"]
 
 client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
@@ -61,3 +61,4 @@ def run_sst_engine():
     print("Scan complete. 'data.json' is ready for upload.")
 
 run_sst_engine()
+
