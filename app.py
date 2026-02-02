@@ -8,10 +8,11 @@ from datetime import datetime
 # --- 1. CONFIGURATIE ---
 st.set_page_config(page_title="SST AI Bulk Scanner", layout="wide")
 
-# Ledenlijst (Blijft hetzelfde)
+# Ledenlijst
 USERS = {
     "admin@swingstocktraders.com": "SST2024!",
-    "winstmaken@gmx.com": "winstmaken8"
+    "winstmaken@gmx.com": "winstmaken8",
+    "member@test.nl": "Welkom01"
 }
 
 if 'logged_in' not in st.session_state:
@@ -34,21 +35,31 @@ def login_screen():
 if not st.session_state.logged_in:
     login_screen()
 else:
-    # --- CSS VOOR BREEDTE EN CONTRAST ---
+    # --- 2. CSS VOOR BREEDTE EN CONTRAST ---
     st.markdown("""
         <style>
         .stApp { background-color: #000000; }
         
-        /* Tabel breeder maken (+150px effect) */
-        .stTable {
-            width: 100% !important;
-            max-width: 1400px !important; /* Verbreed de container */
-            margin: auto;
+        /* Forceer de container breedte (+150px extra ruimte) */
+        .block-container {
+            max-width: 1450px !important;
+            padding-top: 2rem !important;
         }
         
-        .stTable td { font-size: 14px !important; color: white !important; padding: 12px !important; }
-        .stTable th { background-color: #1e1e1e !important; color: #60a5fa !important; text-transform: uppercase; }
-        [data-testid="stSidebar"] { background-color: #020617 !important; }
+        /* Tabel Styling */
+        .stDataFrame, .stTable {
+            width: 100% !important;
+        }
+        
+        /* Tekstkleuren in tabel */
+        [data-testid="stTable"] td {
+            color: white !important;
+            font-size: 14px !important;
+        }
+        
+        [data-testid="stSidebar"] { 
+            background-color: #020617 !important; 
+        }
         </style>
         """, unsafe_allow_html=True)
 
@@ -73,7 +84,7 @@ else:
             st.session_state.watchlist = ["AAPL", "NVDA", "TSLA"]
             st.rerun()
 
-    # --- SCANNER ENGINE ---
+    # --- 3. SCANNER ENGINE ---
     st.title("🚀 SST NEURAL | Bulk Momentum Scanner")
 
     if st.button("🚀 START FULL MARKET SCAN", type="primary", use_container_width=True):
@@ -127,32 +138,45 @@ else:
                 scan_results.append({
                     "Ticker": ticker,
                     "Prijs": f"${current_price:.2f}",
-                    "Momentum_Score": momentum_score, # Numeriek voor styling
+                    "Momentum_Score": momentum_score,
                     "Ensemble": f"{ensemble_score}%",
                     "RSI": round(rsi, 1),
                     "Status": status,
-                    "Target": f"${pred_price:.2f}",
+                    "Trend Target": f"${pred_price:.2f}",
                     "Stop Loss": f"${(current_price - (1.5 * atr)):.2f}"
                 })
             except Exception:
                 continue
 
-        # --- WEERGAVE RESULTATEN ---
+        # --- 4. WEERGAVE RESULTATEN ---
         if scan_results:
             df_results = pd.DataFrame(scan_results)
             
-            # De gevraagde highlight logica: Alleen oplichten als Momentum_Score > 70
-            def style_momentum(row):
-                # We checken de numerieke waarde die we in de dict hebben opgeslagen
-                if row.Momentum_Score >= 70:
+            # Styling functie op basis van 'Momentum_Score'
+            def style_rows(row):
+                if row['Momentum_Score'] >= 70:
                     return ['background-color: #06402B; color: #00FF00; font-weight: bold'] * len(row)
                 return [''] * len(row)
 
-            # We hernoemen de kolom voor de display naar een mooiere naam
-            df_display = df_results.rename(columns={"Momentum_Score": "Momentum AI %"})
+            # Toepassen styling
+            styled_df = df_results.style.apply(style_rows, axis=1)
+
+            # Opfrissen van kolomnamen voor de eindgebruiker
+            display_columns = {
+                "Momentum_Score": "Momentum AI %",
+                "Ensemble": "AI Score",
+                "Trend Target": "Target",
+                "Stop Loss": "🛡️ Stop"
+            }
+            
+            # Formatteer de Momentum_Score kolom met een % teken in de weergave
+            styled_df.format({"Momentum_Score": "{}%"})
 
             st.subheader(f"Markt Scan Resultaten ({datetime.now().strftime('%H:%M:%S')})")
-            st.table(df_display.style.apply(style_momentum, axis=1))
+            
+            # Gebruik st.table voor statische weergave of st.dataframe voor interactie
+            # We hernoemen de kolommen in de weergave
+            st.table(styled_df.concat().rename(columns=display_columns) if not hasattr(styled_df, 'relabel_index') else styled_df.relabel_index(display_columns.values(), axis=1))
             
             st.download_button(
                 label="📥 Exporteer naar CSV",
@@ -161,10 +185,11 @@ else:
                 mime="text/csv"
             )
         else:
-            st.error("Geen data gevonden.")
+            st.error("Geen data gevonden. Controleer de tickers in je watchlist.")
 
 st.markdown("---")
-st.caption("SST Neural Engine v2.2 | Momentum Focus Mode")
+st.caption("SST Neural Engine v2.3 | High-Momentum Focus Edition")
+
 
 
 
