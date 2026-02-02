@@ -40,7 +40,6 @@ else:
         <style>
         .stApp { background-color: #000000; }
         
-        /* Forceer de container breedte (+150px extra ruimte) */
         .block-container {
             max-width: 1450px !important;
             padding-top: 2rem !important;
@@ -48,13 +47,11 @@ else:
             padding-right: 3rem !important;
         }
         
-        /* Sidebar styling */
         [data-testid="stSidebar"] { 
             background-color: #020617 !important; 
             border-right: 1px solid #1e293b;
         }
 
-        /* Tabel tekst kleur forceren */
         .stDataFrame div[data-testid="stTable"] td {
             color: white !important;
         }
@@ -90,7 +87,6 @@ else:
         scan_results = []
         progress_bar = st.progress(0)
         
-        # We gebruiken een placeholder om de lijst tijdens het scannen alvast te tonen (optioneel)
         for index, ticker in enumerate(st.session_state.watchlist):
             try:
                 progress_bar.progress((index + 1) / len(st.session_state.watchlist))
@@ -152,11 +148,20 @@ else:
         if scan_results:
             df_display = pd.DataFrame(scan_results)
             
-            # Styling functie: we kijken naar de kolom "Momentum AI %"
             def style_rows(row):
-                if row["Momentum AI %"] >= 70:
-                    # Donkergroene achtergrond met felgroene tekst
+                # Haal de getallen uit de kolommen voor de vergelijking
+                mom = row["Momentum AI %"]
+                # AI Ensemble is een string als "90%", we halen de '%' weg en maken er een getal van
+                ens = int(row["AI Ensemble"].replace('%', ''))
+                
+                # CONDITIE 1: Momentum > 60 EN Ensemble > 90 (Lichtgroen)
+                if mom > 60 and ens > 90:
+                    return ['background-color: #90EE90; color: #000000; font-weight: bold'] * len(row)
+                
+                # CONDITIE 2: Bestaande Momentum regel >= 70 (Donkergroen)
+                elif mom >= 70:
                     return ['background-color: #06402B; color: #00FF00; font-weight: bold'] * len(row)
+                
                 return [''] * len(row)
 
             # Styling toepassen
@@ -165,8 +170,6 @@ else:
             })
 
             st.subheader(f"Markt Scan Resultaten ({datetime.now().strftime('%H:%M:%S')})")
-            
-            # Weergave via st.dataframe voor beste compatibiliteit en breedte
             st.dataframe(styled_df, use_container_width=True, height=len(df_display) * 40 + 40)
             
             st.download_button(
@@ -180,6 +183,7 @@ else:
 
 st.markdown("---")
 st.caption("SST Neural Engine v2.4 | High-Contrast Momentum Scanner")
+
 
 
 
