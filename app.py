@@ -3,16 +3,14 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- 1. CONFIGURATIE ---
-st.set_page_config(page_title="SST AI Bulk Scanner", layout="wide")
+st.set_page_config(page_title="SST AI Pro Scanner", layout="wide")
 
-# Ledenlijst
 USERS = {
     "admin@swingstocktraders.com": "SST2024!",
-    "winstmaken@gmx.com": "winstmaken8",
-    "member@test.nl": "Welkom01"
+    "winstmaken@gmx.com": "winstmaken8"
 }
 
 if 'logged_in' not in st.session_state:
@@ -35,29 +33,12 @@ def login_screen():
 if not st.session_state.logged_in:
     login_screen()
 else:
-    # --- 2. CSS VOOR BREEDTE EN CONTRAST ---
+    # --- 2. CSS ---
     st.markdown("""
         <style>
         .stApp { background-color: #000000; }
-        
-        /* Forceer de container breedte (+150px extra ruimte) */
-        .block-container {
-            max-width: 1450px !important;
-            padding-top: 2rem !important;
-            padding-left: 3rem !important;
-            padding-right: 3rem !important;
-        }
-        
-        /* Sidebar styling */
-        [data-testid="stSidebar"] { 
-            background-color: #020617 !important; 
-            border-right: 1px solid #1e293b;
-        }
-
-        /* Tabel tekst kleur forceren */
-        .stDataFrame div[data-testid="stTable"] td {
-            color: white !important;
-        }
+        .block-container { max-width: 1450px !important; padding: 2rem 3rem; }
+        [data-testid="stSidebar"] { background-color: #020617 !important; border-right: 1px solid #1e293b; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -67,7 +48,6 @@ else:
             st.session_state.logged_in = False
             st.rerun()
         st.markdown("---")
-        
         if 'watchlist' not in st.session_state:
             st.session_state.watchlist = ["AAPL", "NVDA", "TSLA", "MSFT", "AMD", "META", "AMZN"]
         
@@ -77,28 +57,40 @@ else:
             if new_ticker not in st.session_state.watchlist:
                 st.session_state.watchlist.append(new_ticker)
                 st.rerun()
-        
-        if st.button("🗑 Reset Lijst"):
-            st.session_state.watchlist = ["AAPL", "NVDA", "TSLA"]
-            st.rerun()
 
     # --- 3. SCANNER ENGINE ---
-    st.title("🚀 SST NEURAL | Bulk Momentum Scanner")
-    st.markdown("---")
+    st.title("🚀 SST NEURAL | AI Momentum & Earnings Scanner")
 
     if st.button("🚀 START FULL MARKET SCAN", type="primary", use_container_width=True):
         scan_results = []
         progress_bar = st.progress(0)
-        
-        # We gebruiken een placeholder om de lijst tijdens het scannen alvast te tonen (optioneel)
+        today = datetime.now()
+
         for index, ticker in enumerate(st.session_state.watchlist):
             try:
                 progress_bar.progress((index + 1) / len(st.session_state.watchlist))
                 t_obj = yf.Ticker(ticker)
                 data = t_obj.history(period="250d")
                 
-                if data.empty or len(data) < 50: continue
+                if data.empty: continue
                 
+                # --- EARNINGS CHECK ---
+                earnings_alert = "Nee"
+                try:
+                    # Haal de volgende earnings datum op
+                    calendar = t_obj.calendar
+                    if calendar is not None and not calendar.empty:
+                        # yfinance geeft vaak een DataFrame terug met datums
+                        next_earnings = calendar.iloc[0, 0]
+                        # Zet om naar datetime voor vergelijking
+                        if isinstance(next_earnings, datetime):
+                            days_to_earnings = (next_earnings - today).days
+                            if 0 <= days_to_earnings <= 7:
+                                earnings_alert = f"⚠️ JA ({next_earnings.strftime('%d-%m')})"
+                except:
+                    earnings_alert = "Check"
+
+                # --- AI BEREKENINGEN ---
                 current_price = float(data['Close'].iloc[-1])
                 
                 # Linear Regression
@@ -118,20 +110,11 @@ else:
                 ema_up = up.ewm(com=13, adjust=False).mean()
                 ema_down = down.ewm(com=13, adjust=False).mean()
                 rsi = float(100 - (100 / (1 + (ema_up.iloc[-1] / (ema_down.iloc[-1] + 1e-9)))))
-                
-                # Ensemble
-                ensemble_score = int(70 + (10 if pred_price > current_price else -10) + (12 if rsi < 45 else 0))
-                ensemble_score = max(5, min(98, ensemble_score))
 
-                # Status bepaling
-                if momentum_score >= 70:
-                    status = "🚀 MOMENTUM BUY"
-                elif ensemble_score >= 70:
-                    status = "✅ ENSEMBLE BUY"
-                elif rsi > 70:
-                    status = "⚠️ OVERBOUGHT"
-                else:
-                    status = "🔵 NEUTRAL"
+                # Status
+                if momentum_score >= 70: status = "🚀 MOMENTUM"
+                elif rsi > 70: status = "⚠️ OVERBOUGHT"
+                else: status = "🔵 NEUTRAL"
 
                 atr = (data['High'] - data['Low']).rolling(14).mean().iloc[-1]
 
@@ -139,47 +122,38 @@ else:
                     "Ticker": ticker,
                     "Prijs": f"${current_price:.2f}",
                     "Momentum AI %": momentum_score,
-                    "AI Ensemble": f"{ensemble_score}%",
                     "RSI": round(rsi, 1),
+                    "Earnings <7d": earnings_alert,
                     "Status": status,
                     "Target": f"${pred_price:.2f}",
-                    "🛡️ Stop Loss": f"${(current_price - (1.5 * atr)):.2f}"
+                    "🛡️ Stop": f"${(current_price - (1.5 * atr)):.2f}"
                 })
-            except Exception:
-                continue
+            except: continue
 
-        # --- 4. WEERGAVE RESULTATEN ---
+        # --- 4. WEERGAVE ---
         if scan_results:
             df_display = pd.DataFrame(scan_results)
             
-            # Styling functie: we kijken naar de kolom "Momentum AI %"
             def style_rows(row):
+                # Highlight groen bij hoog momentum
                 if row["Momentum AI %"] >= 70:
-                    # Donkergroene achtergrond met felgroene tekst
                     return ['background-color: #06402B; color: #00FF00; font-weight: bold'] * len(row)
+                # Subtiel oranje/rood bij earnings waarschuwing
+                if "⚠️" in str(row["Earnings <7d"]):
+                    return ['color: #fbbf24; font-style: italic'] * len(row)
                 return [''] * len(row)
 
-            # Styling toepassen
-            styled_df = df_display.style.apply(style_rows, axis=1).format({
-                "Momentum AI %": "{}%"
-            })
-
-            st.subheader(f"Markt Scan Resultaten ({datetime.now().strftime('%H:%M:%S')})")
+            styled_df = df_display.style.apply(style_rows, axis=1).format({"Momentum AI %": "{}%"})
             
-            # Weergave via st.dataframe voor beste compatibiliteit en breedte
-            st.dataframe(styled_df, use_container_width=True, height=len(df_display) * 40 + 40)
+            st.subheader(f"Markt Scan ({datetime.now().strftime('%H:%M:%S')})")
+            st.dataframe(styled_df, use_container_width=True, height=500)
             
-            st.download_button(
-                label="📥 Exporteer naar CSV",
-                data=df_display.to_csv(index=False),
-                file_name=f"SST_Scan_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
-            )
+            st.info("💡 Tip: Als 'Earnings <7d' op JA staat, wees dan extra voorzichtig. De volatiliteit is dan extreem hoog.")
         else:
-            st.error("Geen data gevonden. Controleer je watchlist.")
+            st.error("Geen data gevonden.")
 
 st.markdown("---")
-st.caption("SST Neural Engine v2.4 | High-Contrast Momentum Scanner")
+st.caption("SST Neural Engine v2.5 | Risk Management Enabled")
 
 
 
