@@ -8,11 +8,10 @@ from datetime import datetime
 # --- 1. CONFIGURATIE ---
 st.set_page_config(page_title="SST AI Bulk Scanner", layout="wide")
 
-# Ledenlijst
+# Ledenlijst (Blijft hetzelfde)
 USERS = {
     "admin@swingstocktraders.com": "SST2024!",
-    "winstmaken@gmx.com": "winstmaken8",
-    "member@test.nl": "Welkom01"
+    "winstmaken@gmx.com": "winstmaken8"
 }
 
 if 'logged_in' not in st.session_state:
@@ -35,11 +34,19 @@ def login_screen():
 if not st.session_state.logged_in:
     login_screen()
 else:
-    # --- CSS VOOR SCANNER EN CONTRAST ---
+    # --- CSS VOOR BREEDTE EN CONTRAST ---
     st.markdown("""
         <style>
         .stApp { background-color: #000000; }
-        .stTable td { font-size: 14px !important; color: white !important; }
+        
+        /* Tabel breeder maken (+150px effect) */
+        .stTable {
+            width: 100% !important;
+            max-width: 1400px !important; /* Verbreed de container */
+            margin: auto;
+        }
+        
+        .stTable td { font-size: 14px !important; color: white !important; padding: 12px !important; }
         .stTable th { background-color: #1e1e1e !important; color: #60a5fa !important; text-transform: uppercase; }
         [data-testid="stSidebar"] { background-color: #020617 !important; }
         </style>
@@ -68,7 +75,6 @@ else:
 
     # --- SCANNER ENGINE ---
     st.title("🚀 SST NEURAL | Bulk Momentum Scanner")
-    st.caption("AI-gestuurde analyse van Momentum, Trends en RSI voor swingtraders.")
 
     if st.button("🚀 START FULL MARKET SCAN", type="primary", use_container_width=True):
         scan_results = []
@@ -77,9 +83,7 @@ else:
         for index, ticker in enumerate(st.session_state.watchlist):
             try:
                 progress_bar.progress((index + 1) / len(st.session_state.watchlist))
-                
                 t_obj = yf.Ticker(ticker)
-                # We halen iets meer data op voor stabiele berekeningen
                 data = t_obj.history(period="250d")
                 
                 if data.empty or len(data) < 50: continue
@@ -109,22 +113,21 @@ else:
                 ensemble_score = max(5, min(98, ensemble_score))
 
                 # Signaal Logica
-                if ensemble_score >= 80 or momentum_score >= 80:
-                    status = "🚀 STRONG BUY"
-                elif ensemble_score >= 65 or momentum_score >= 65:
-                    status = "✅ BUY"
-                elif rsi > 70 or ensemble_score < 40:
-                    status = "⚠️ SELL/WEAK"
+                if momentum_score >= 70:
+                    status = "🚀 MOMENTUM BUY"
+                elif ensemble_score >= 70:
+                    status = "✅ ENSEMBLE BUY"
+                elif rsi > 70:
+                    status = "⚠️ OVERBOUGHT"
                 else:
                     status = "🔵 NEUTRAL"
 
-                # ATR voor Stop Loss
                 atr = (data['High'] - data['Low']).rolling(14).mean().iloc[-1]
 
                 scan_results.append({
                     "Ticker": ticker,
                     "Prijs": f"${current_price:.2f}",
-                    "Momentum AI": f"{momentum_score}%",
+                    "Momentum_Score": momentum_score, # Numeriek voor styling
                     "Ensemble": f"{ensemble_score}%",
                     "RSI": round(rsi, 1),
                     "Status": status,
@@ -138,19 +141,18 @@ else:
         if scan_results:
             df_results = pd.DataFrame(scan_results)
             
-            def style_status(row):
-                if "STRONG BUY" in str(row.Status):
-                    return ['background-color: #006400; color: #00FF00; font-weight: bold'] * len(row)
-                elif "BUY" in str(row.Status):
-                    return ['background-color: #06402B; color: #2ecc71'] * len(row)
-                elif "SELL" in str(row.Status):
-                    return ['background-color: #441111; color: #ff4444'] * len(row)
-                elif "NEUTRAL" in str(row.Status):
-                    return ['background-color: #001f3f; color: #3498db'] * len(row)
+            # De gevraagde highlight logica: Alleen oplichten als Momentum_Score > 70
+            def style_momentum(row):
+                # We checken de numerieke waarde die we in de dict hebben opgeslagen
+                if row.Momentum_Score >= 70:
+                    return ['background-color: #06402B; color: #00FF00; font-weight: bold'] * len(row)
                 return [''] * len(row)
 
+            # We hernoemen de kolom voor de display naar een mooiere naam
+            df_display = df_results.rename(columns={"Momentum_Score": "Momentum AI %"})
+
             st.subheader(f"Markt Scan Resultaten ({datetime.now().strftime('%H:%M:%S')})")
-            st.table(df_results.style.apply(style_status, axis=1))
+            st.table(df_display.style.apply(style_momentum, axis=1))
             
             st.download_button(
                 label="📥 Exporteer naar CSV",
@@ -159,10 +161,10 @@ else:
                 mime="text/csv"
             )
         else:
-            st.error("Geen data kunnen ophalen. Controleer je watchlist of internetverbinding.")
+            st.error("Geen data gevonden.")
 
 st.markdown("---")
-st.caption("SST Neural Engine v2.1 | Data via Yahoo Finance")
+st.caption("SST Neural Engine v2.2 | Momentum Focus Mode")
 
 
 
