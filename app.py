@@ -150,24 +150,44 @@ else:
 
         # --- 4. WEERGAVE RESULTATEN ---
         if scan_results:
+            # Maak de dataframe
             df_results = pd.DataFrame(scan_results)
             
-            # Styling functie op basis van 'Momentum_Score'
-            def style_rows(row):
-                if row['Momentum_Score'] >= 70:
-                    return ['background-color: #06402B; color: #00FF00; font-weight: bold'] * len(row)
-                return [''] * len(row)
-
-            # Toepassen styling
-            styled_df = df_results.style.apply(style_rows, axis=1)
-
-            # Opfrissen van kolomnamen voor de eindgebruiker
-            display_columns = {
+            # 1. Hernoem de kolommen direct in de dataframe (voorkomt relabel fouten)
+            df_display = df_results.rename(columns={
                 "Momentum_Score": "Momentum AI %",
                 "Ensemble": "AI Score",
                 "Trend Target": "Target",
                 "Stop Loss": "🛡️ Stop"
-            }
+            })
+            
+            # 2. Styling functie: we kijken nu naar de NIEUWE kolomnaam "Momentum AI %"
+            def style_rows(row):
+                # We checken de waarde in de hernoemde kolom
+                if row["Momentum AI %"] >= 70:
+                    return ['background-color: #06402B; color: #00FF00; font-weight: bold'] * len(row)
+                return [''] * len(row)
+
+            # 3. Pas styling toe op de hernoemde dataframe
+            styled_df = df_display.style.apply(style_rows, axis=1)
+
+            # 4. Formatteer de getallen (voeg % toe in de weergave)
+            styled_df.format({"Momentum AI %": "{}%"})
+
+            st.subheader(f"Markt Scan Resultaten ({datetime.now().strftime('%H:%M:%S')})")
+            
+            # 5. Tabel tonen (use_container_width zorgt voor de gewenste breedte)
+            st.dataframe(styled_df, use_container_width=True)
+            
+            # Download knop met de originele data
+            st.download_button(
+                label="📥 Exporteer naar CSV",
+                data=df_results.to_csv(index=False),
+                file_name=f"SST_Scan_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.error("Geen data gevonden. Controleer de tickers in je watchlist.")
             
             # Formatteer de Momentum_Score kolom met een % teken in de weergave
             styled_df.format({"Momentum_Score": "{}%"})
@@ -189,6 +209,7 @@ else:
 
 st.markdown("---")
 st.caption("SST Neural Engine v2.3 | High-Momentum Focus Edition")
+
 
 
 
