@@ -1,5 +1,5 @@
-alpaca-py
-
+streamlit
+yfinance
 pandas
-
 numpy
+scikit-learn
