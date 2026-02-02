@@ -44,21 +44,19 @@ else:
         .block-container {
             max-width: 1450px !important;
             padding-top: 2rem !important;
+            padding-left: 3rem !important;
+            padding-right: 3rem !important;
         }
         
-        /* Tabel Styling */
-        .stDataFrame, .stTable {
-            width: 100% !important;
-        }
-        
-        /* Tekstkleuren in tabel */
-        [data-testid="stTable"] td {
-            color: white !important;
-            font-size: 14px !important;
-        }
-        
+        /* Sidebar styling */
         [data-testid="stSidebar"] { 
             background-color: #020617 !important; 
+            border-right: 1px solid #1e293b;
+        }
+
+        /* Tabel tekst kleur forceren */
+        .stDataFrame div[data-testid="stTable"] td {
+            color: white !important;
         }
         </style>
         """, unsafe_allow_html=True)
@@ -86,11 +84,13 @@ else:
 
     # --- 3. SCANNER ENGINE ---
     st.title("🚀 SST NEURAL | Bulk Momentum Scanner")
+    st.markdown("---")
 
     if st.button("🚀 START FULL MARKET SCAN", type="primary", use_container_width=True):
         scan_results = []
         progress_bar = st.progress(0)
         
+        # We gebruiken een placeholder om de lijst tijdens het scannen alvast te tonen (optioneel)
         for index, ticker in enumerate(st.session_state.watchlist):
             try:
                 progress_bar.progress((index + 1) / len(st.session_state.watchlist))
@@ -101,29 +101,29 @@ else:
                 
                 current_price = float(data['Close'].iloc[-1])
                 
-                # AI Trend (Linear Regression)
+                # Linear Regression
                 y_reg = data['Close'].values.reshape(-1, 1)
                 X_reg = np.array(range(len(y_reg))).reshape(-1, 1)
                 reg_model = LinearRegression().fit(X_reg, y_reg)
                 pred_price = float(reg_model.predict(np.array([[len(y_reg)]]))[0][0])
                 
-                # Momentum AI Score
+                # Momentum AI
                 last_5_days = data['Close'].iloc[-5:].pct_change().sum()
                 momentum_score = int(68 + (last_5_days * 160))
                 momentum_score = max(5, min(98, momentum_score))
                 
-                # RSI Berekening
+                # RSI
                 delta = data['Close'].diff()
                 up, down = delta.clip(lower=0), -1 * delta.clip(upper=0)
                 ema_up = up.ewm(com=13, adjust=False).mean()
                 ema_down = down.ewm(com=13, adjust=False).mean()
                 rsi = float(100 - (100 / (1 + (ema_up.iloc[-1] / (ema_down.iloc[-1] + 1e-9)))))
                 
-                # AI Ensemble Score
+                # Ensemble
                 ensemble_score = int(70 + (10 if pred_price > current_price else -10) + (12 if rsi < 45 else 0))
                 ensemble_score = max(5, min(98, ensemble_score))
 
-                # Signaal Logica
+                # Status bepaling
                 if momentum_score >= 70:
                     status = "🚀 MOMENTUM BUY"
                 elif ensemble_score >= 70:
@@ -138,77 +138,49 @@ else:
                 scan_results.append({
                     "Ticker": ticker,
                     "Prijs": f"${current_price:.2f}",
-                    "Momentum_Score": momentum_score,
-                    "Ensemble": f"{ensemble_score}%",
+                    "Momentum AI %": momentum_score,
+                    "AI Ensemble": f"{ensemble_score}%",
                     "RSI": round(rsi, 1),
                     "Status": status,
-                    "Trend Target": f"${pred_price:.2f}",
-                    "Stop Loss": f"${(current_price - (1.5 * atr)):.2f}"
+                    "Target": f"${pred_price:.2f}",
+                    "🛡️ Stop Loss": f"${(current_price - (1.5 * atr)):.2f}"
                 })
             except Exception:
                 continue
 
         # --- 4. WEERGAVE RESULTATEN ---
         if scan_results:
-            # Maak de dataframe
-            df_results = pd.DataFrame(scan_results)
+            df_display = pd.DataFrame(scan_results)
             
-            # 1. Hernoem de kolommen direct in de dataframe (voorkomt relabel fouten)
-            df_display = df_results.rename(columns={
-                "Momentum_Score": "Momentum AI %",
-                "Ensemble": "AI Score",
-                "Trend Target": "Target",
-                "Stop Loss": "🛡️ Stop"
-            })
-            
-            # 2. Styling functie: we kijken nu naar de NIEUWE kolomnaam "Momentum AI %"
+            # Styling functie: we kijken naar de kolom "Momentum AI %"
             def style_rows(row):
-                # We checken de waarde in de hernoemde kolom
                 if row["Momentum AI %"] >= 70:
+                    # Donkergroene achtergrond met felgroene tekst
                     return ['background-color: #06402B; color: #00FF00; font-weight: bold'] * len(row)
                 return [''] * len(row)
 
-            # 3. Pas styling toe op de hernoemde dataframe
-            styled_df = df_display.style.apply(style_rows, axis=1)
-
-            # 4. Formatteer de getallen (voeg % toe in de weergave)
-            styled_df.format({"Momentum AI %": "{}%"})
+            # Styling toepassen
+            styled_df = df_display.style.apply(style_rows, axis=1).format({
+                "Momentum AI %": "{}%"
+            })
 
             st.subheader(f"Markt Scan Resultaten ({datetime.now().strftime('%H:%M:%S')})")
             
-            # 5. Tabel tonen (use_container_width zorgt voor de gewenste breedte)
-            st.dataframe(styled_df, use_container_width=True)
+            # Weergave via st.dataframe voor beste compatibiliteit en breedte
+            st.dataframe(styled_df, use_container_width=True, height=len(df_display) * 40 + 40)
             
-            # Download knop met de originele data
             st.download_button(
                 label="📥 Exporteer naar CSV",
-                data=df_results.to_csv(index=False),
+                data=df_display.to_csv(index=False),
                 file_name=f"SST_Scan_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv"
             )
         else:
-            st.error("Geen data gevonden. Controleer de tickers in je watchlist.")
-            
-            # Formatteer de Momentum_Score kolom met een % teken in de weergave
-            styled_df.format({"Momentum_Score": "{}%"})
-
-            st.subheader(f"Markt Scan Resultaten ({datetime.now().strftime('%H:%M:%S')})")
-            
-            # Gebruik st.table voor statische weergave of st.dataframe voor interactie
-            # We hernoemen de kolommen in de weergave
-            st.table(styled_df.concat().rename(columns=display_columns) if not hasattr(styled_df, 'relabel_index') else styled_df.relabel_index(display_columns.values(), axis=1))
-            
-            st.download_button(
-                label="📥 Exporteer naar CSV",
-                data=df_results.to_csv(index=False),
-                file_name=f"SST_Scan_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
-            )
-        else:
-            st.error("Geen data gevonden. Controleer de tickers in je watchlist.")
+            st.error("Geen data gevonden. Controleer je watchlist.")
 
 st.markdown("---")
-st.caption("SST Neural Engine v2.3 | High-Momentum Focus Edition")
+st.caption("SST Neural Engine v2.4 | High-Contrast Momentum Scanner")
+
 
 
 
