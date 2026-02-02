@@ -1,124 +1,156 @@
 import streamlit as st
+import yfinance as yf
 import pandas as pd
 import numpy as np
-from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest
-from alpaca.data.timeframe import TimeFrame
-from datetime import datetime, timedelta
+from sklearn.linear_model import LinearRegression
+from datetime import datetime
 
-# --- 1. STYLING VOOR MAXIMAAL CONTRAST ---
-st.set_page_config(page_title="SST Custom Scanner", layout="wide")
+# --- 1. CONFIGURATIE ---
+st.set_page_config(page_title="SST AI Bulk Scanner", layout="wide")
 
-st.markdown("""
-    <style>
-    /* Achtergrond en algemene tekst */
-    .stApp { 
-        background-color: #000000; 
-    }
-    
-    /* Alle standaard tekst naar fel wit */
-    p, span, label, .stMarkdown {
-        color: #ffffff !important;
-        font-weight: 500;
-    }
+# Ledenlijst (Blijft ongewijzigd)
+USERS = {
+    "admin@swingstocktraders.com": "SST2024!",
+    "winstmaken@gmx.com":"winstmaken8"
+}
 
-    /* Titels extra laten opvallen */
-    h1, h2, h3 {
-        color: #60a5fa !important;
-        font-weight: 800 !important;
-        text-transform: uppercase;
-    }
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
 
-    /* Input vak aanpassen voor leesbaarheid */
-    .stTextInput input {
-        background-color: #1e293b !important;
-        color: #ffffff !important;
-        border: 2px solid #3b82f6 !important;
-        font-size: 18px !important;
-    }
+def login_screen():
+    st.markdown("<h2 style='text-align: center;'>🔐 SST Leden Login</h2>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        email = st.text_input("E-mailadres")
+        password = st.text_input("Wachtwoord", type="password")
+        if st.button("Inloggen", use_container_width=True):
+            if email in USERS and USERS[email] == password:
+                st.session_state.logged_in = True
+                st.session_state.user_email = email
+                st.rerun()
+            else:
+                st.error("Onjuist e-mailadres of wachtwoord.")
 
-    /* Tabel styling: Fel witte tekst op donkere rijen */
-    .stTable td {
-        color: #ffffff !important;
-        font-size: 16px !important;
-        border-bottom: 1px solid #334155 !important;
-    }
-    
-    .stTable th {
-        color: #94a3b8 !important;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-
-    /* Sidebar contrast */
-    [data-testid="stSidebar"] {
-        background-color: #0f172a !important;
-        border-right: 1px solid #334155;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- 2. API KEYS ---
-API_KEY = "PK5GBMQVMM4XSH2Y4OMA7X3NYZ"
-SECRET_KEY = "DfkqRpMWaBVsJQydvhpBXA5bRAvG3tG9yPn1eMoEpEWt"
-
-# --- 3. SIDEBAR: INPUT ---
-st.sidebar.markdown("### 🛠 CONTROL PANEL")
-user_input = st.sidebar.text_input("ENTER TICKERS (CSV):", value="ANET, ERAS, NVDA, AMZN")
-
-# Verwerk de invoer
-selected_tickers = [t.strip().upper() for t in user_input.split(",") if t.strip()]
-
-# --- 4. ENGINE ---
-@st.cache_data(ttl=300)
-def get_analysis(tickers):
-    if not tickers:
-        return pd.DataFrame()
-    client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
-    results = []
-    for symbol in tickers:
-        try:
-            req = StockBarsRequest(symbol_or_symbols=symbol, timeframe=TimeFrame.Day, start=datetime.now() - timedelta(days=45))
-            bars = client.get_stock_bars(req).df.xs(symbol)
-            bars['log_ret'] = np.log(bars['close'] / bars['close'].shift(1))
-            lstm_force = np.clip((bars['log_ret'].iloc[-5:].sum() * 100 + 2) * 20, 0, 100)
-            delta = bars['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rsi_val = 100 - (100 / (1 + gain.iloc[-1]/loss.iloc[-1]))
-            ensemble = np.clip((lstm_force * 0.6) + ((100 - abs(rsi_val - 60) * 2) * 0.4), 0, 100)
-            atr = (bars['high'] - bars['low']).rolling(14).mean().iloc[-1]
-            
-            results.append({
-                "TICKER": symbol,
-                "PRICE": f"${round(bars['close'].iloc[-1], 2)}",
-                "ENSEMBLE": f"{round(ensemble, 1)}/100",
-                "LSTM FORCE": f"{round(lstm_force, 1)}%",
-                "RATING": "STRONG BUY" if ensemble > 75 else "ACCUMULATE" if ensemble > 60 else "NEUTRAL",
-                "STOP LOSS": f"${round(bars['close'].iloc[-1] - (atr * 1.5), 2)}"
-            })
-        except: continue
-    return pd.DataFrame(results)
-
-# --- 5. UI ---
-st.title("🚀 SST NEURAL | AI TERMINAL")
-
-if selected_tickers:
-    with st.spinner("QUANT ANALYSIS IN PROGRESS..."):
-        df = get_analysis(selected_tickers)
-        if not df.empty:
-            # Kleurcodes voor ratings (Neon groen/blauw voor leesbaarheid)
-            def color_rating(val):
-                if val == 'STRONG BUY': return 'color: #00ff99; font-weight: bold; font-size: 18px;'
-                if val == 'ACCUMULATE': return 'color: #00d4ff; font-weight: bold;'
-                return 'color: #ffffff;'
-
-            st.table(df.style.applymap(color_rating, subset=['RATING']))
-        else:
-            st.error("NO DATA FOUND. CHECK TICKER SYMBOLS.")
+if not st.session_state.logged_in:
+    login_screen()
 else:
-    st.info("AWAITING INPUT: ENTER TICKERS IN THE SIDEBAR.")
+    # --- CSS VOOR SCANNER ---
+    st.markdown("""
+        <style>
+        .stTable td { font-size: 14px !important; }
+        .stTable th { background-color: #1e1e1e !important; color: #60a5fa !important; }
+        </style>
+        """, unsafe_allow_html=True)
 
-st.markdown("---")
-st.caption(f"SYSTEM STATUS: ACTIVE | SYNC TIME: {datetime.now().strftime('%H:%M:%S')} EST")
+    with st.sidebar:
+        st.write(f"Account: **{st.session_state.user_email}**")
+        if st.button("Uitloggen"):
+            st.session_state.logged_in = False
+            st.rerun()
+        st.markdown("---")
+        if 'watchlist' not in st.session_state:
+            st.session_state.watchlist = ["AAPL", "NVDA", "TSLA", "MSFT", "AMD", "META", "GOOGL", "AMZN"]
+        
+        st.subheader("Manage Watchlist")
+        new_ticker = st.text_input("Voeg Ticker toe:").upper().strip()
+        if st.button("➕ Voeg toe") and new_ticker:
+            if new_ticker not in st.session_state.watchlist:
+                st.session_state.watchlist.append(new_ticker)
+                st.rerun()
+        
+        if st.button("🗑 Reset Lijst"):
+            st.session_state.watchlist = ["AAPL", "NVDA", "TSLA"]
+            st.rerun()
+
+    # --- SCANNER ENGINE ---
+    st.title("🛡️ SST Neural Momentum Scanner")
+    st.write("De scanner analyseert real-time Momentum AI en Ensemble scores voor je gehele watchlist.")
+
+    if st.button("🚀 START FULL MARKET SCAN", type="primary", use_container_width=True):
+        scan_results = []
+        progress_bar = st.progress(0)
+        
+        for index, ticker in enumerate(st.session_state.watchlist):
+            try:
+                # Update progress
+                progress_bar.progress((index + 1) / len(st.session_state.watchlist))
+                
+                t_obj = yf.Ticker(ticker)
+                data = t_obj.history(period="200d")
+                
+                if data.empty: continue
+                
+                # --- AI BEREKENINGEN ---
+                current_price = float(data['Close'].iloc[-1])
+                
+                # Linear Regression (Trend)
+                y_reg = data['Close'].values.reshape(-1, 1)
+                X_reg = np.array(range(len(y_reg))).reshape(-1, 1)
+                reg_model = LinearRegression().fit(X_reg, y_reg)
+                pred_price = float(reg_model.predict(np.array([[len(y_reg)]]))[0][0])
+                
+                # Momentum AI Score
+                last_5_days = data['Close'].iloc[-5:].pct_change().sum()
+                momentum_score = int(68 + (last_5_days * 160))
+                momentum_score = max(0, min(100, momentum_score)) # Clamp tussen 0-100
+                
+                # RSI
+                delta = data['Close'].diff()
+                up, down = delta.clip(lower=0), -1 * delta.clip(upper=0)
+                ema_up = up.ewm(com=13, adjust=False).mean()
+                ema_down = down.ewm(com=13, adjust=False).mean()
+                rsi = float(100 - (100 / (1 + (ema_up.iloc[-1] / (ema_down.iloc[-1] + 1e-9)))))
+                
+                # Ensemble
+                ensemble_score = int(70 + (10 if pred_price > current_price else -10) + (12 if rsi < 45 else 0))
+                ensemble_score = max(0, min(100, ensemble_score))
+
+                # Signaal Bepaling
+                status = "HOLD"
+                if momentum_score >= 75 or ensemble_score >= 75:
+                    status = "🚀 BUY"
+                elif momentum_score < 40:
+                    status = "⚠️ SELL/WEAK"
+
+                scan_results.append({
+                    "Ticker": ticker,
+                    "Prijs": f"${current_price:.2f}",
+                    "Momentum AI": momentum_score,
+                    "Ensemble Score": ensemble_score,
+                    "RSI": round(rsi, 1),
+                    "Status": status,
+                    "Trend Target": f"${pred_price:.2f}"
+                })
+            except Exception as e:
+                st.warning(f"Kon {ticker} niet scannen: {e}")
+
+        # --- WEERGAVE RESULTATEN ---
+        if scan_results:
+            df_results = pd.DataFrame(scan_results)
+            
+            def style_results(row):
+                if "BUY" in str(row.Status):
+                    return ['background-color: #06402B; color: #00C851; font-weight: bold'] * len(row)
+                elif "SELL" in str(row.Status):
+                    return ['background-color: #441111; color: #ff4444'] * len(row)
+                return [''] * len(row)
+
+            st.subheader(f"Scan Resultaten ({datetime.now().strftime('%H:%M:%S')})")
+            st.table(df_results.style.apply(style_results, axis=1))
+            
+            # Export optie
+            st.download_button("Download CSV", df_results.to_csv(index=False), "sst_scan.csv", "text/csv")
+        else:
+            st.error("Geen data kunnen ophalen. Probeer het later opnieuw.")
+
+
+
+### Hoe deze scanner te gebruiken:
+1.  **Watchlist beheren:** Voeg in de sidebar de tickers toe die je wilt monitoren.
+2.  **De Scan:** Klik op de grote blauwe knop **"START FULL MARKET SCAN"**. 
+3.  **Signalen:** Kijk direct naar de rij die groen kleurt. Dit zijn de aandelen waarbij de Momentum AI en het Ensemble model samenkomen voor een koopmoment.
+4.  **Targets:** De kolom `Trend Target` geeft je het koersdoel op basis van de lineaire regressie (AI Trend).
+
+Wil je dat ik een **automatische e-mail notificatie** toevoeg die je een bericht stuurt zodra er een "🚀 BUY" signaal in de lijst verschijnt?
+
 
