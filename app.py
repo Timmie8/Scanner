@@ -15,7 +15,7 @@ USERS = {
     "member@test.nl": "Welkom01"
 }
 
-# Initialiseer de watchlist in session_state als deze nog niet bestaat
+# Initialiseer de watchlist in session_state
 if 'watchlist' not in st.session_state:
     st.session_state.watchlist = ["AAPL", "NVDA", "TSLA", "MSFT", "AMD", "META", "AMZN"]
 
@@ -66,12 +66,10 @@ else:
             st.rerun()
         st.markdown("---")
         
-        # --- WATCHLIST BEHEER ---
         st.subheader("🛠 Watchlist Beheer")
+        input_tickers = st.text_area("Voeg Tickers toe (komma-gescheiden):", placeholder="AAPL, TSLA...", height=100)
         
-        # Sectie 1: Toevoegen
-        input_tickers = st.text_area("Voeg Tickers toe (scheid met komma):", placeholder="Bijv: AAPL, TSLA, NVDA", height=100)
-        if st.button("➕ Voeg toe aan lijst", use_container_width=True):
+        if st.button("➕ Voeg toe", use_container_width=True):
             if input_tickers:
                 new_list = [t.strip().upper() for t in input_tickers.split(",") if t.strip()]
                 for t in new_list:
@@ -79,23 +77,18 @@ else:
                         st.session_state.watchlist.append(t)
                 st.rerun()
 
-        st.markdown("---")
-
-        # Sectie 2: Specifiek verwijderen
         if st.session_state.watchlist:
-            to_remove = st.multiselect("Selecteer tickers om te verwijderen:", st.session_state.watchlist)
+            to_remove = st.multiselect("Verwijder tickers:", st.session_state.watchlist)
             if st.button("🗑 Verwijder Selectie", use_container_width=True):
                 st.session_state.watchlist = [t for t in st.session_state.watchlist if t not in to_remove]
                 st.rerun()
         
-        # Sectie 3: Reset
         if st.button("⚠️ Reset naar Standaard", use_container_width=True):
             st.session_state.watchlist = ["AAPL", "NVDA", "TSLA"]
             st.rerun()
         
         st.markdown("---")
-        st.write("**Huidige Tickers:**")
-        st.code(", ".join(st.session_state.watchlist))
+        st.write(f"Aantal tickers: **{len(st.session_state.watchlist)}**")
 
     # --- 3. SCANNER ENGINE ---
     st.title("🚀 SST NEURAL | Bulk Momentum Scanner")
@@ -103,7 +96,7 @@ else:
 
     if st.button("🚀 START FULL MARKET SCAN", type="primary", use_container_width=True):
         if not st.session_state.watchlist:
-            st.warning("Je watchlist is leeg. Voeg tickers toe in de sidebar.")
+            st.warning("Voeg eerst tickers toe.")
         else:
             scan_results = []
             progress_bar = st.progress(0)
@@ -118,12 +111,23 @@ else:
                     
                     current_price = float(data['Close'].iloc[-1])
                     
-                    # MACD BEREKENING
+                    # --- MACD BEREKENING ---
                     ema12 = data['Close'].ewm(span=12, adjust=False).mean()
                     ema26 = data['Close'].ewm(span=26, adjust=False).mean()
                     macd_line = ema12 - ema26
                     signal_line = macd_line.ewm(span=9, adjust=False).mean()
                     is_macd_bullish = macd_line.iloc[-1] > signal_line.iloc[-1]
+                    
+                    # --- STOCHASTIC BEREKENING (14, 3, 3) ---
+                    low_14 = data['Low'].rolling(window=14).min()
+                    high_14 = data['High'].rolling(window=14).max()
+                    k_line = 100 * ((data['Close'] - low_14) / (high_14 - low_14))
+                    # Smooth %K (3-period)
+                    k_line_smoothed = k_line.rolling(window=3).mean()
+                    # %D Line (3-period SMA of smoothed %K)
+                    d_line = k_line_smoothed.rolling(window=3).mean()
+                    
+                    stoch_arrow = "▲" if k_line_smoothed.iloc[-1] > d_line.iloc[-1] else "▼"
                     
                     # Linear Regression
                     y_reg = data['Close'].values.reshape(-1, 1)
@@ -162,6 +166,7 @@ else:
                     scan_results.append({
                         "Ticker": ticker,
                         "Prijs": f"${current_price:.2f}",
+                        "Stoch": stoch_arrow,
                         "Momentum AI %": momentum_score,
                         "AI Ensemble": f"{ensemble_score}%",
                         "RSI": round(rsi, 1),
@@ -187,27 +192,22 @@ else:
                             return ['background-color: #90EE90; color: #000000; font-weight: bold'] * len(row)
                         elif mom >= 70:
                             return ['background-color: #06402B; color: #00FF00; font-weight: bold'] * len(row)
-                    
                     return [''] * len(row)
 
-                styled_df = df_display.style.apply(style_rows, axis=1).hide(axis="columns", subset=["MACD_OK"]).format({
-                    "Momentum AI %": "{}%"
-                })
+                # Styling en formatting
+                styled_df = df_display.style.apply(style_rows, axis=1)\
+                    .hide(axis="columns", subset=["MACD_OK"])\
+                    .format({"Momentum AI %": "{}%"})\
+                    .map(lambda x: "color: #00FF00;" if x == "▲" else ("color: #FF0000;" if x == "▼" else ""), subset=["Stoch"])
 
                 st.subheader(f"Markt Scan Resultaten ({datetime.now().strftime('%H:%M:%S')})")
                 st.dataframe(styled_df, use_container_width=True, height=len(df_display) * 40 + 40)
-                
-                st.download_button(
-                    label="📥 Exporteer naar CSV",
-                    data=df_display.drop(columns=["MACD_OK"]).to_csv(index=False),
-                    file_name=f"SST_Scan_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv"
-                )
             else:
-                st.error("Geen data gevonden. Controleer de tickers of je internetverbinding.")
+                st.error("Geen data gevonden.")
 
 st.markdown("---")
-st.caption("SST Neural Engine v2.4 | High-Contrast Momentum Scanner")
+st.caption("SST Neural Engine v2.5 | Neural & Oscillator Scanner")
+
 
 
 
