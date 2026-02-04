@@ -97,6 +97,14 @@ else:
                 
                 current_price = float(data['Close'].iloc[-1])
                 
+                # --- MACD BEREKENING ---
+                ema12 = data['Close'].ewm(span=12, adjust=False).mean()
+                ema26 = data['Close'].ewm(span=26, adjust=False).mean()
+                macd_line = ema12 - ema26
+                signal_line = macd_line.ewm(span=9, adjust=False).mean()
+                
+                is_macd_bullish = macd_line.iloc[-1] > signal_line.iloc[-1]
+                
                 # Linear Regression
                 y_reg = data['Close'].values.reshape(-1, 1)
                 X_reg = np.array(range(len(y_reg))).reshape(-1, 1)
@@ -120,9 +128,9 @@ else:
                 ensemble_score = max(5, min(98, ensemble_score))
 
                 # Status bepaling
-                if momentum_score >= 70:
+                if momentum_score >= 70 and is_macd_bullish:
                     status = "🚀 MOMENTUM BUY"
-                elif ensemble_score >= 70:
+                elif ensemble_score >= 70 and is_macd_bullish:
                     status = "✅ ENSEMBLE BUY"
                 elif rsi > 70:
                     status = "⚠️ OVERBOUGHT"
@@ -139,9 +147,10 @@ else:
                     "RSI": round(rsi, 1),
                     "Status": status,
                     "Target": f"${pred_price:.2f}",
-                    "🛡️ Stop Loss": f"${(current_price - (1.5 * atr)):.2f}"
+                    "🛡️ Stop Loss": f"${(current_price - (1.5 * atr)):.2f}",
+                    "MACD_Bullish": is_macd_bullish  # Hulpkolom voor styling
                 })
-            except Exception:
+            except Exception as e:
                 continue
 
         # --- 4. WEERGAVE RESULTATEN ---
@@ -149,23 +158,25 @@ else:
             df_display = pd.DataFrame(scan_results)
             
             def style_rows(row):
-                # Haal de getallen uit de kolommen voor de vergelijking
+                # Haal de waarden op
                 mom = row["Momentum AI %"]
-                # AI Ensemble is een string als "90%", we halen de '%' weg en maken er een getal van
                 ens = int(row["AI Ensemble"].replace('%', ''))
+                macd_ok = row["MACD_Bullish"]
                 
-                # CONDITIE 1: Momentum > 60 EN Ensemble > 90 (Lichtgroen)
-                if mom > 60 and ens > 90:
-                    return ['background-color: #90EE90; color: #000000; font-weight: bold'] * len(row)
-                
-                # CONDITIE 2: Bestaande Momentum regel >= 70 (Donkergroen)
-                elif mom >= 70:
-                    return ['background-color: #06402B; color: #00FF00; font-weight: bold'] * len(row)
+                # Alleen groene kleur als MACD Bullish is én scores voldoen
+                if macd_ok:
+                    # CONDITIE 1: Momentum > 60 EN Ensemble > 90 (Lichtgroen)
+                    if mom > 60 and ens > 90:
+                        return ['background-color: #90EE90; color: #000000; font-weight: bold'] * len(row)
+                    
+                    # CONDITIE 2: Bestaande Momentum regel >= 70 (Donkergroen)
+                    elif mom >= 70:
+                        return ['background-color: #06402B; color: #00FF00; font-weight: bold'] * len(row)
                 
                 return [''] * len(row)
 
-            # Styling toepassen
-            styled_df = df_display.style.apply(style_rows, axis=1).format({
+            # Styling toepassen en de hulpkolom verbergen voor de gebruiker
+            styled_df = df_display.style.apply(style_rows, axis=1).hide(axis="columns", subset=["MACD_Bullish"]).format({
                 "Momentum AI %": "{}%"
             })
 
@@ -174,7 +185,7 @@ else:
             
             st.download_button(
                 label="📥 Exporteer naar CSV",
-                data=df_display.to_csv(index=False),
+                data=df_display.drop(columns=["MACD_Bullish"]).to_csv(index=False),
                 file_name=f"SST_Scan_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv"
             )
